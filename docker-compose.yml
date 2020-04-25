@@ -139,6 +139,12 @@ services:
       - LOG_LEVEL=WARN
       - HOST=0.0.0.0 #for all
     restart: unless-stopped
+    healthcheck:
+      test: ["nc", "-z", "127.0.0.1 8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   ##for non-send-mail-just-check-code-in-log
   fxa-auth-local-mail-helper:
@@ -178,8 +184,10 @@ services:
     expose:
       - "9000"
     depends_on:
-      - fxa-auth-db-mysql
-      - fxa-redis
+      fxa-auth-db-mysql:
+        condition: service_healthy
+      fxa-redis:
+        condition: service_healthy
     volumes:
       - ./wait:/wait
       # since i do not know which  client_id is real use 
