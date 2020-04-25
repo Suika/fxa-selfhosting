@@ -4,9 +4,10 @@ networks:
     name: fxa-network
 services:
   ############### dependecies ##############
-  mysqldb: # used by fxa-profile-server fxa-auth-db-mysql pushbox syncserver
+  fxa-mysqldb: # used by fxa-profile-server fxa-auth-db-mysql pushbox syncserver
   #[TODO]: set a password
     image: mysql/mysql-server:5.6
+    container_name: : fxa-mysqldb
     networks:
       - fxa-network
     environment:
@@ -24,7 +25,7 @@ services:
       driver: "none"
     restart: unless-stopped
 
-  redis: #used by fxa-email-service  fxa-profile-server fxa-content-server fxa-auth-server
+  fxa-redis: #used by fxa-email-service  fxa-profile-server fxa-content-server fxa-auth-server
     image: redis
     expose:
       - "6379"
@@ -57,7 +58,7 @@ services:
       retries: 3
       start_period: 30s
 
-  syncserver:  #used by fxa-content-server 
+  fxa-syncserver:  #used by fxa-content-server
   #uses browserid-verifier / mysqldb
     # build:  #it seems that mozilla/syncserver already has PyMySQL
     #   dockerfile: Dockerfile_syncserver_mysql
@@ -71,14 +72,14 @@ services:
     expose:
       - "5000"
     environment:
-      - WAIT_HOSTS=mysqldb:3306,nginx:443 # we need nginx for https://www.${DOMAIN_NAME}/.well-known/fxa-client-configuration
+      - WAIT_HOSTS=fxa-mysqldb:3306,nginx:443 # we need nginx for https://www.${DOMAIN_NAME}/.well-known/fxa-client-configuration
       - WAIT_HOSTS_TIMEOUT=120
       - SYNCSERVER_PUBLIC_URL=https://token.${DOMAIN_NAME} #:= meaning https://stackoverflow.com/a/10390436
       - SYNCSERVER_BROWSERID_VERIFIER=http://browseridverifier.local:5050
       # auto generate via syncserver / ?? use for  syncserver<-> tokenserver??
       # secret is generated in code. see syncserver/_init__.py:57
       # - SYNCSERVER_SECRET=${FXAHOST_SYNCSERVER_SECRET:=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 20`}  #todo make it random
-      - SYNCSERVER_SQLURI=mysql+pymysql://root@mysqldb/sync  #databasename: sync
+      - SYNCSERVER_SQLURI=mysql+pymysql://root@fxa-mysqldb/sync  #databasename: sync
       # - SYNCSERVER_SQLURI=sqlite:////tmp/syncserver.db
       - SYNCSERVER_BATCH_UPLOAD_ENABLED=true
       - SYNCSERVER_FORCE_WSGI_ENVIRON=true # because we have nginx proxy it 
@@ -87,7 +88,7 @@ services:
       # and since it depends on fxa-content-server 
       - SYNCSERVER_IDENTITY_PROVIDER=https://www.${DOMAIN_NAME}
     depends_on:
-      - mysqldb
+      - fxa-mysqldb
       - fxa-content-server 
     volumes:
       - ./wait:/wait
@@ -111,7 +112,7 @@ services:
 
       - ROCKET_PORT=8002
       - ROCKET_SERVER_TOKEN=${FXAHOST_PUSHBOXKEY:-YOUR_LONG_ENOUGH_RANDOM_STRING} # should same as fxa-auth-server -> pushbox->key
-      - ROCKET_DATABASE_URL=mysql://root@mysqldb/pushbox
+      - ROCKET_DATABASE_URL=mysql://root@fxa-mysqldb/pushbox
       - WAIT_HOSTS=mysqldb:3306
       - WAIT_HOSTS_TIMEOUT=120
     depends_on:
@@ -129,7 +130,7 @@ services:
     expose:
       - "8000"
     depends_on:
-      - mysqldb
+      - fxa-mysqldb
     volumes:
       - ./wait:/wait
     command: sh -c "/wait && node ./bin/db_patcher.js > /dev/null && node ./bin/server.js"
@@ -137,9 +138,9 @@ services:
       - WAIT_HOSTS=mysqldb:3306
       - WAIT_HOSTS_TIMEOUT=120
       #see fxa-auth-db-mysql/config/config.js
-      - MYSQL_HOST=mysqldb
+      - MYSQL_HOST=fxa-mysqldb
       # if MYSQL_PASSWORD MYSQL_USER MYSQL_PORT
-      - MYSQL_SLAVE_HOST=mysqldb
+      - MYSQL_SLAVE_HOST=fxa-mysqldb
       - ENABLE_PRUNING=true # to cleanup db
       - LOG_LEVEL=WARN
       - HOST=0.0.0.0 #for all
@@ -184,7 +185,7 @@ services:
       - "9000"
     depends_on:
       - fxa-auth-db-mysql
-      - redis
+      - fxa-redis
     volumes:
       - ./wait:/wait
       # since i do not know which  client_id is real use 
@@ -205,7 +206,7 @@ services:
       - SUPPORT_PANEL_AUTH_SECRET_BEARER_TOKEN=${FXAHOST_SUPPORT_PANEL_SERVER_AUTH_SECRET_BEARER_TOKEN:-SUPPORT_PANEL_IS_NOT_SUPPORTED} # just pass config check , we have no  support 
       - PROFILE_SERVER_AUTH_SECRET_BEARER_TOKEN=${FXAHOST_PROFILE_SERVER_AUTH_SECRET_BEARER_TOKEN:-I_DONT_WANT_TO_CHANGE_YOU} # same as profile server AUTH_SECRET_BEARER_TOKEN
       - FLOW_ID_KEY=${FXAHOST_FLOWIDKEY:-MY_FLOW_ID_KEY} #same as content-server 's
-      - REDIS_HOST=redis
+      - REDIS_HOST=fxa-redis
       - ACCESS_TOKEN_REDIS_HOST=redis # new in v1.160.0
       
       # sqs for 3rd rp
@@ -224,7 +225,7 @@ services:
 
       # for oauth
       - DB=mysql 
-      - MYSQL_HOST=mysqldb
+      - MYSQL_HOST=fxa-mysqldb
 
       - HTTPDB_URL=http://fxa-auth-db-mysql:8000 # 
       - IP_ADDRESS=0.0.0.0
@@ -284,7 +285,7 @@ services:
 
       - GEODB_ENABLED=false
 
-      - WAIT_HOSTS=redis:6379,fxa-auth-db-mysql:8000
+      - WAIT_HOSTS=fxa-redis:6379,fxa-auth-db-mysql:8000
       - WAIT_HOSTS_TIMEOUT=120
       - LOG_LEVEL=WARN
     command: sh -c "/wait && node /app/bin/key_server.js"
@@ -343,10 +344,10 @@ services:
     expose:
       - "1111"
     depends_on:
-      - mysqldb
-      - redis
+      - fxa-mysqldb
+      - fxa-redis
     environment:
-      - WAIT_HOSTS=mysqldb:3306,redis:6379 
+      - WAIT_HOSTS=mysqldb:3306,fxa-redis:6379
       - WAIT_HOSTS_TIMEOUT=120
       - AUTH_SECRET_BEARER_TOKEN=${FXAHOST_PROFILE_SERVER_AUTH_SECRET_BEARER_TOKEN:-I_DONT_WANT_TO_CHANGE_YOU} # same as authserver profile PROFILE_SERVER_AUTH_SECRET_BEARER_TOKEN
       #we do not need sqs events
@@ -356,13 +357,13 @@ services:
       - DB=mysql
       - IMG_PROVIDERS_FXA=^https://profile.$DOMAIN_NAME/img/a/[0-9a-f]{32}$$ #last $ need escape? yes
       - IMG_URL=https://profile.$DOMAIN_NAME/img/a/{id}
-      - MYSQL_HOST=mysqldb
+      - MYSQL_HOST=fxa-mysqldb
       # merge from fxa-profile-server/config/development.json
       - IMG=local
       - AUTH_SERVER_URL=https://api.${DOMAIN_NAME}/v1 #prefer public url need v1?
       - OAUTH_SERVER_URL=https://oauth.${DOMAIN_NAME}/v1 #prefer public url need v1?
 
-      - REDIS_HOST=redis
+      - REDIS_HOST=fxa-redis
 
       - WORKER_URL=http://fxa-profile-worker:1113
       #- PUBLIC_URL  -> but not used in code?
@@ -382,11 +383,11 @@ services:
     depends_on:
       - fxa-auth-server
       - fxa-profile-server
-      - redis
+      - fxa-redis
     environment:
       - FXA_OAUTH_CLIENT_ID=ea3ca969f8c6bb0d # this is important!! maybe...
       - FLOW_ID_KEY=${FXAHOST_FLOWIDKEY:-MY_FLOW_ID_KEY} #same as auth-server 's
-      - FEATURE_FLAGS_REDIS_HOST=redis
+      - FEATURE_FLAGS_REDIS_HOST=fxa-redis
       # display in /.well-known/fxa-client-configuration -> sync_tokenserver_base_url
       # todo paring_server_base_uri is not right see github/mozilla/fxa-pairing-channel
 
@@ -421,7 +422,7 @@ services:
     #todo env all depends service host:port
   # local mail helper?
 
-  nginx:
+  fxa-nginx:
   # [TODO] auto renew cert!
     image: nginx
     networks:
