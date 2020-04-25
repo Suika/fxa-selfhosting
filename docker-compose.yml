@@ -298,6 +298,12 @@ services:
       - LOG_LEVEL=WARN
     command: sh -c "/wait && node /app/bin/key_server.js"
     restart: unless-stopped
+    healthcheck:
+      test: ["nc", "-z", "127.0.0.1 9000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # fxa-event-broker:
   #   image: mozilla/fxa-event-broker
