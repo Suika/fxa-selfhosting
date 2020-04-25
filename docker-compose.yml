@@ -50,6 +50,12 @@ services:
     # to override "npm" entrypoint and "start" command
     entrypoint: "node"
     command: "server.js"
+    healthcheck:
+      test: ["/bin/bash", "-c", "echo -e 'GET /status HTTP/1.1\r\n\r\n' | nc 127.0.0.1 5050 | grep -q 'HTTP/1.1 200 OK' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   syncserver:  #used by fxa-content-server 
   #uses browserid-verifier / mysqldb
