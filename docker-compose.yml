@@ -1,9 +1,14 @@
 version: "3.7"
+networks:
+  fxa-network:
+    name: fxa-network
 services:
   ############### dependecies ##############
   mysqldb: # used by fxa-profile-server fxa-auth-db-mysql pushbox syncserver
   #[TODO]: set a password
     image: mysql/mysql-server:5.6
+    networks:
+      - fxa-network
     environment:
       - MYSQL_ALLOW_EMPTY_PASSWORD=true
       - MYSQL_ROOT_HOST=%
@@ -32,6 +37,8 @@ services:
   # uses fxa-auth-server (issuer)
   # a tld-like name is required for fxa-auth-server config's url type check
     image: mozilla/browserid-verifier # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     expose:
       - "5050"
     environment:
@@ -53,6 +60,8 @@ services:
     #   #
     #   context: /dev/null
     image: mozilla/syncserver
+    networks:
+      - fxa-network
     expose:
       - "5000"
     environment:
@@ -87,6 +96,8 @@ services:
   # see:  https://github.com/mozilla-services/pushbox#database
   # DELETE from pushboxv1 where TTL < unix_timestamp();
     image: mozilla/pushbox # if latest not work please specific :0.3.0 (last tested version)
+    networks:
+      - fxa-network
     expose:
       - "8002"
     environment:
@@ -107,6 +118,8 @@ services:
   ##################
   fxa-auth-db-mysql:
     image: mozilla/fxa-auth-db-mysql # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     expose:
       - "8000"
     depends_on:
@@ -130,6 +143,8 @@ services:
   fxa-auth-local-mail-helper:
   #[TODO] mails in const users ={} should be deleted 
     image: mozilla/fxa-auth-server # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     expose:
       - "9999"
     ports:
@@ -157,6 +172,8 @@ services:
 
   fxa-auth-server:
     image: mozilla/fxa-auth-server # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     expose:
       - "9000"
     depends_on:
@@ -285,6 +302,8 @@ services:
   # fxa-profile-static and  fxa-profile-worker should share /var/public
   fxa-profile-static:
     image: mozilla/fxa-profile-server # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     volumes:
       - ${PERSISTENCEPATH:-.}/public:/app/var/public/:ro
     expose:
@@ -298,6 +317,8 @@ services:
   fxa-profile-worker:
     #just compute image and upload to aws/ local_public
     image: mozilla/fxa-profile-server # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     volumes:
       #cannot write? i'm app but folder:node
       - ${PERSISTENCEPATH:-.}/public:/app/var/public/
@@ -311,6 +332,8 @@ services:
 
   fxa-profile-server:
     image: mozilla/fxa-profile-server # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     expose:
       - "1111"
     depends_on:
@@ -346,6 +369,8 @@ services:
 
   fxa-content-server:
     image: mozilla/fxa-content-server # if latest not work please specific :v1.161.1 (last tested version)
+    networks:
+      - fxa-network
     expose:
       - "3030"
     depends_on:
@@ -393,6 +418,8 @@ services:
   nginx:
   # [TODO] auto renew cert!
     image: nginx
+    networks:
+      - fxa-network
     ports:
       - "443:443" # the real outer port
     depends_on:
@@ -401,7 +428,7 @@ services:
       - syncserver #cycle dependce? break via do not set SYNCSERVER_IDENTITY_PROVIDER
       # nope! nginx need only this service's name resolvable (which resolvable when container is up)
       # sync ->  depends on content(www)  -> depends nginx ->  sync up is enough
-      - fxa-content-server      
+      - fxa-content-server
     volumes:
       #  resolver 127.0.0.11 valid=30s; => to allow up without depends ?
       - ./_init/nginx/fxa.conf.tmpl:/etc/nginx/conf.d/fxa.conf.tmpl:ro
