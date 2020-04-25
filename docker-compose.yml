@@ -72,8 +72,6 @@ services:
     expose:
       - "5000"
     environment:
-      - WAIT_HOSTS=fxa-mysqldb:3306,nginx:443 # we need nginx for https://www.${DOMAIN_NAME}/.well-known/fxa-client-configuration
-      - WAIT_HOSTS_TIMEOUT=120
       - SYNCSERVER_PUBLIC_URL=https://token.${DOMAIN_NAME} #:= meaning https://stackoverflow.com/a/10390436
       - SYNCSERVER_BROWSERID_VERIFIER=http://browseridverifier.local:5050
       # auto generate via syncserver / ?? use for  syncserver<-> tokenserver??
@@ -88,10 +86,12 @@ services:
       # and since it depends on fxa-content-server 
       - SYNCSERVER_IDENTITY_PROVIDER=https://www.${DOMAIN_NAME}
     depends_on:
-      - fxa-mysqldb
-      - fxa-content-server 
-    volumes:
-      - ./wait:/wait
+      fxa-mysqldb:
+        condition: service_healthy
+      fxa-nginx: # we need nginx for https://www.${DOMAIN_NAME}/.well-known/fxa-client-configuration
+        condition: service_healthy
+      fxa-content-server:
+        condition: service_healthy
     entrypoint: sh -c "/wait && /usr/bin/dumb-init /app/docker-entrypoint.sh server"
     # entrypoint: sh -c "pip install --upgrade  PyMySQL==0.9.3 && /wait && /usr/bin/dumb-init /app/docker-entrypoint.sh server" if pymysql not installed?
     # command: "server"
@@ -113,12 +113,9 @@ services:
       - ROCKET_PORT=8002
       - ROCKET_SERVER_TOKEN=${FXAHOST_PUSHBOXKEY:-YOUR_LONG_ENOUGH_RANDOM_STRING} # should same as fxa-auth-server -> pushbox->key
       - ROCKET_DATABASE_URL=mysql://root@fxa-mysqldb/pushbox
-      - WAIT_HOSTS=mysqldb:3306
-      - WAIT_HOSTS_TIMEOUT=120
     depends_on:
-      - mysqldb
-    volumes:
-      - ./wait:/wait
+      fxa-mysqldb:
+        condition: service_healthy
     command: sh -c "/wait && /app/bin/pushbox"
     restart: unless-stopped
 
@@ -130,13 +127,10 @@ services:
     expose:
       - "8000"
     depends_on:
-      - fxa-mysqldb
-    volumes:
-      - ./wait:/wait
+      fxa-mysqldb:
+        condition: service_healthy
     command: sh -c "/wait && node ./bin/db_patcher.js > /dev/null && node ./bin/server.js"
     environment:
-      - WAIT_HOSTS=mysqldb:3306
-      - WAIT_HOSTS_TIMEOUT=120
       #see fxa-auth-db-mysql/config/config.js
       - MYSQL_HOST=fxa-mysqldb
       # if MYSQL_PASSWORD MYSQL_USER MYSQL_PORT
@@ -344,11 +338,11 @@ services:
     expose:
       - "1111"
     depends_on:
-      - fxa-mysqldb
-      - fxa-redis
+      fxa-mysqldb:
+        condition: service_healthy
+      fxa-redis:
+        condition: service_healthy
     environment:
-      - WAIT_HOSTS=mysqldb:3306,fxa-redis:6379
-      - WAIT_HOSTS_TIMEOUT=120
       - AUTH_SECRET_BEARER_TOKEN=${FXAHOST_PROFILE_SERVER_AUTH_SECRET_BEARER_TOKEN:-I_DONT_WANT_TO_CHANGE_YOU} # same as authserver profile PROFILE_SERVER_AUTH_SECRET_BEARER_TOKEN
       #we do not need sqs events
       - EVENTS_ENABLED=false
@@ -369,7 +363,6 @@ services:
       #- PUBLIC_URL  -> but not used in code?
     #command:  #need wait for it
     volumes:
-      - ./wait:/wait
       - ${PERSISTENCEPATH:-.}/public:/app/var/public/ #new added (because of npm preinstall is removed , so in docker images there's no /app/var/public , however it is not used )
     command: sh -c "/wait && node /app/bin/server.js"
     restart: unless-stopped
@@ -381,9 +374,12 @@ services:
     expose:
       - "3030"
     depends_on:
-      - fxa-auth-server
-      - fxa-profile-server
-      - fxa-redis
+      fxa-auth-server:
+        condition: service_healthy
+      fxa-profile-server:
+        condition: service_healthy
+      fxa-redis:
+        condition: service_healthy
     environment:
       - FXA_OAUTH_CLIENT_ID=ea3ca969f8c6bb0d # this is important!! maybe...
       - FLOW_ID_KEY=${FXAHOST_FLOWIDKEY:-MY_FLOW_ID_KEY} #same as auth-server 's
@@ -430,12 +426,16 @@ services:
     ports:
       - "443:443" # the real outer port
     depends_on:
-      - fxa-auth-server
-      - fxa-profile-server
-      - syncserver #cycle dependce? break via do not set SYNCSERVER_IDENTITY_PROVIDER
-      # nope! nginx need only this service's name resolvable (which resolvable when container is up)
-      # sync ->  depends on content(www)  -> depends nginx ->  sync up is enough
-      - fxa-content-server
+      fxa-auth-server:
+        condition: service_healthy
+      fxa-profile-server:
+        condition: service_healthy
+      fxa-syncserver:
+        condition: service_healthy #cycle dependce? break via do not set SYNCSERVER_IDENTITY_PROVIDER
+        # nope! nginx need only this service's name resolvable (which resolvable when container is up)
+        # sync ->  depends on content(www)  -> depends nginx ->  sync up is enough
+      fxa-content-server:
+        condition: service_healthy
     volumes:
       #  resolver 127.0.0.11 valid=30s; => to allow up without depends ?
       - ./_init/nginx/fxa.conf.tmpl:/etc/nginx/conf.d/fxa.conf.tmpl:ro
